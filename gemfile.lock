@@ -13,15 +13,21 @@ GEM
       rack (~> 2.2)
       rack-protection (= 2.2.0)
       tilt (~> 2.0)
+    slim (4.1.0)
+      temple (>= 0.7.6, < 0.9)
+      tilt (>= 2.0.6, < 2.1)
     sqlite3 (1.4.2)
+    temple (0.8.2)
     tilt (2.0.10)
 
 PLATFORMS
+  x64-mingw-ucrt
   x64-mingw32
 
 DEPENDENCIES
   bcrypt
   sinatra
+  slim
   sqlite3
 
 BUNDLED WITH

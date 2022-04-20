@@ -1,0 +1,16 @@
+.index
+    h1 Welcome to the home page
+    a href="debug_view" debug
+    form action="compute" method="POST"
+        input type="number" name="num0"/
+        select name="operator"
+            option value="+" +
+            option value="-" -
+            option value="*" * 
+            option value="/" ./
+        input type="number" name="num1"
+        input type="submit" value="Give me answer"
+
+    form action="reset" method="POST"
+        input type="submit" value="Clear history"
+

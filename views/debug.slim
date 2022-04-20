@@ -1,0 +1,27 @@
+.debug
+    h1 Debugging
+    /! Form to select database
+    form action="select_db" method="POST"
+        select name="selected_db"
+            - if tables != nil
+                - for table in tables do
+                    - is_selected = ""
+                    - if table["name"]==selected
+                        - is_selected = "selected"
+                    <option value = "#{table['name']}" #{is_selected}> #{table["name"]}
+                    
+        input type="submit" value="View database"
+
+    /! Display database if one is selected
+    - if viewed_table != nil
+        table class="borderTable"
+            tr
+                - for key in viewed_table[0] do
+                    td #{key[0]}
+
+            -for row in viewed_table do
+                tr
+                    - for item in row do
+                        td #{item[1]}
+
+
