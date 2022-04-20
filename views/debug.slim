@@ -14,7 +14,7 @@
         input type="submit" value="View database"
 
     /! Display database if one is selected
-    - if viewed_table != nil
+    - if viewed_table != nil and viewed_table.length > 0
         table class="borderTable"
             tr
                 - for key in viewed_table[0] do
@@ -33,7 +33,7 @@
 
         form action="add_row" method="POST"
             -viewed_table[0].each_with_index do |item, index|
-                input type="text" name="val_#{index}" placeholder="#{item[0]}"
+                input type="text" name="#{item[0]}" placeholder="#{item[0]}"
 
             input type="submit" value="Add row"
 

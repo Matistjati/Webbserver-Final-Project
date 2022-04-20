@@ -1,0 +1,10 @@
+.new-problem
+    h1 Create a problem
+    a href="../index" Home
+
+    form action="/problems" method="POST"
+        input name="name" type="text" placeholder="name"
+        input type="submit" value="Create"
+
+    - if error != nil
+        p #{error}

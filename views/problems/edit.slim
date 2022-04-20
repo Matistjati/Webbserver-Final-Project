@@ -1,0 +1,16 @@
+.edit-problem
+    h1 Editing problem #{name}
+
+    p
+        a href="/problems/" Problems
+
+    form action="update" method="POST"
+        textarea name="content" cols="80" rows="10" #{content}
+
+        input type="submit" value="Save"
+
+    - if info_message != nil
+        p #{info_message}
+
+    form action="delete" method="POST"
+        input type="submit" value="Delete problem"

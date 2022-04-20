@@ -1,7 +1,9 @@
 .index
     h1 Welcome to the home page
-    p
-        a href="debug" debug
+    -if permission_level != nil
+        -if permission_level >= 3
+            p
+                a href="debug" debug
 
     - if username != nil
         p Welcome, #{username}
@@ -10,6 +12,10 @@
     -else
         p
             a href="users/login" login
+
+    p
+        a href="problems/" problems
+
     form action="compute" method="POST"
         input type="number" name="num0"/
         select name="operator"

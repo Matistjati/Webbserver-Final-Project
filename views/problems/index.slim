@@ -1,0 +1,15 @@
+.index-problems
+    h1 All problems
+    p
+        a href="../index" Home
+
+    p
+        a href="new" Create a problem
+
+    h2 Problems
+
+    -for problem in problems
+        p
+            a href="/problems/#{problem['id']}" #{problem["post_name"]}
+            - if problem['author_id'].to_i==user_id or permission_level.to_i > 1
+                a href="/problems/#{problem['id']}/edit"          edit
