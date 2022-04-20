@@ -1,0 +1,20 @@
+.login
+    h1 Register
+    
+    a href="../index" Home
+
+    
+
+    form action="new" method="POST"
+        - if filled_username != nil
+            input name="username" type="text" value="#{filled_username}"
+        - else
+            input name="username" type="text" placeholder="username"
+        input name="password" type="password" placeholder="password"
+        input name="password_confirm" type="password" placeholder="confirm password"
+        input type="submit" value="Register"
+
+    - if error != nil
+        p #{error}
+
+    a href="login" Already a user? Login

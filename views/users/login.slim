@@ -1,0 +1,17 @@
+.login
+    h1 Login
+    
+    a href="../index" Home
+
+    form action="validate" method="POST"
+        - if filled_username != nil
+            input name="username" type="text" value="#{filled_username}"
+        - else
+            input name="username" type="text" placeholder="username"
+        input name="password" type="password" placeholder="password"
+        input type="submit" value="Login"
+
+    - if error != nil
+        p #{error}
+
+    a href="register" Not a user? Register here!

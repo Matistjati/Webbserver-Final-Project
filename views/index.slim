@@ -1,6 +1,15 @@
 .index
     h1 Welcome to the home page
-    a href="debug" debug
+    p
+        a href="debug" debug
+
+    - if username != nil
+        p Welcome, #{username}
+        p
+            a href="users/logout" log out
+    -else
+        p
+            a href="users/login" login
     form action="compute" method="POST"
         input type="number" name="num0"/
         select name="operator"
