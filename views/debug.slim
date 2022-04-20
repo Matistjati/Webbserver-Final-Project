@@ -18,10 +18,22 @@
             tr
                 - for key in viewed_table[0] do
                     td #{key[0]}
+                
 
-            -for row in viewed_table do
+            -for row_index in (0...viewed_table.length) do
                 tr
-                    - for item in row do
+                    - for item in viewed_table[row_index] do
                         td #{item[1]}
+                    
+                    td
+                        form action="delete_row" method="POST"
+                            input type="hidden" name="row" value="#{row_index}"
+                            input type="submit" value="X"
+
+        form action="add_row" method="POST"
+            -viewed_table[0].each_with_index do |item, index|
+                input type="text" name="val_#{index}" placeholder="#{item[0]}"
+
+            input type="submit" value="Add row"
 
 
