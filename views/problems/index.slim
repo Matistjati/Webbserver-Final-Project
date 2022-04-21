@@ -1,10 +1,11 @@
 .index-problems
     h1 All problems
     p
-        a href="../index" Home
+        a href="../" Home
 
-    p
-        a href="new" Create a problem
+    -if user_id != nil
+        p
+            a href="new" Create a problem
 
     h2 Problems
 

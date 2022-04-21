@@ -1,6 +1,10 @@
 NORMAL_USER = 1
-ADMINISTRATOR = 2
+ADMIN = 2
 SUPER_ADMIN = 3
+
+def string_is_int(str)
+    return str.to_i.to_s == str
+end
 
 def connect_to_db(name, rootDir="db")
     db = SQLite3::Database.new("#{rootDir}/#{name}.db")

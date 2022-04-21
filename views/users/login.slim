@@ -1,9 +1,9 @@
 .login
     h1 Login
     
-    a href="../index" Home
+    a href="../" Home
 
-    form action="validate" method="POST"
+    form action="login" method="POST"
         - if filled_username != nil
             input name="username" type="text" value="#{filled_username}"
         - else

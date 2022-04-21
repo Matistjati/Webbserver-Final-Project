@@ -35,17 +35,28 @@ before do
 
     # 401, can't create problem anonymously
     puts(path)
-    if session[:user_id] == nil && match_path(path, ["problems/new"])
-        redirect("/index")
+    if session[:user_id] == nil && match_path(path, ["problems/new", "problems"])
+        redirect("/error/401")
+    end
+end
+
+before("/problems/:id/*") do
+    if session[:user_id] == nil
+        redirect("error/401")
     end
 
+    if string_is_int(params["id"]) && get_field("database", "posts", "author_id", session[:user_id]).to_i != session[:user_id]
+        redirect("error/401")
+    end
 end
+
 
 get("/error/:id") do
     errors = 
     {
         404 => "Page does not exist",
-        401 => "Unauthorized access"
+        401 => "Unauthorized access",
+        500 => "Internal server error"
     }
 
     if errors.has_key?(params[:id].to_i)
@@ -59,7 +70,7 @@ get("/error/:id") do
     slim(:error, locals:{"error_message": errors[error_id], "error_id": error_id})
 end
 
-get("/index") do
+get("/") do
     username = nil
     permission_level = 0
     if session[:user_id] != nil
@@ -93,6 +104,10 @@ get("/problems/new") do
 end
 
 post("/problems") do
+    if session[:user_id] == nil
+        redirect("error/401")
+    end
+
     post_name = params["name"]
 
     db = connect_to_db("database")
@@ -123,12 +138,8 @@ get("/problems/:id") do
     slim(:"problems/show", locals:{"name":post_info["post_name"], "content": content})
 end
 
-get("/problems/:id/edit") do
-    #TODO:verify ownership of post, 401
-
-    #puts(params[:id])
-    
-    if session[:user_id] == nil
+get("/problems/:id/edit") do    
+    if session[:user_id] == nil || !string_is_int(params["id"])
         return
     end
 
@@ -137,15 +148,17 @@ get("/problems/:id/edit") do
     post_info = db.execute("SELECT content_path, post_name, author_id FROM posts WHERE id = ?", [params[:id]]).first
 
     
-
-    #401
-    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
-        redirect("/index")
+    # If not author, do not allow
+    # If admin, do allow
+    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < ADMIN
+        redirect("/error/401")
     end
 
-    # TODO: check if exists
+    # If the file somehow doesn't exist, cry about it
+    if not File.exist?(post_info["content_path"]) 
+        redirect("/error/500")
+    end
     content = File.read(post_info["content_path"])
-
 
     info_message = session[:info_message]
     session[:info_message] = nil
@@ -154,13 +167,8 @@ get("/problems/:id/edit") do
     slim(:"problems/edit", locals:{"name":post_info["post_name"], "content": content, "info_message": info_message})
 end
 
-
 post("/problems/:id/delete") do
-    #TODO:verify ownership of post, 401
-
-    #puts(params[:id])
-    
-    if session[:user_id] == nil
+    if session[:user_id] == nil || !string_is_int(params["id"])
         return
     end
 
@@ -170,13 +178,12 @@ post("/problems/:id/delete") do
 
     
 
-    #401
+    # If not author, do not allow
+    # If super admin, do allow (normal admins shouldn't be able to delete)
     if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
-        redirect("/index")
+        redirect("/error/401")
     end
 
-    # TODO: check if exists
-    puts(post_info["content_path"])
     if File.exist?(post_info["content_path"]) 
         File.delete(post_info["content_path"])
     end
@@ -188,9 +195,7 @@ post("/problems/:id/delete") do
 end
 
 post("/problems/:id/update") do
-    #TODO:verify ownership of post, 401
-
-    if session[:user_id] == nil
+    if session[:user_id] == nil || !string_is_int(params["id"])
         return
     end
 
@@ -200,21 +205,20 @@ post("/problems/:id/update") do
     post_info = db.execute("SELECT content_path, post_name, author_id FROM posts WHERE id = ?", [params[:id]]).first
 
 
-    #401
-    # If not login, do not allow
-    # If not owner, do not allow
-    # If super admin, do allow
-    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
-        redirect("/index")
+    # If not author, do not allow
+    # If admin, do allow
+    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < ADMIN
+        redirect("/error/401")
     end
 
 
-    # TODO: check if exists
+    # If the file somehow doesn't exist, cry about it
+    if not File.exist?(post_info["content_path"]) 
+        redirect("/error/500")
+    end
     File.open(post_info["content_path"], "w") { |file| file.write(params["content"])}
 
     session[:info_message] = "Saved!"
-
-
 
     redirect("/problems/#{params[:id]}/edit")
 end
@@ -228,7 +232,7 @@ get("/users/login") do
     slim(:"users/login", locals:{"error":login_error, "filled_username": filled_username})
 end
 
-post("/users/validate") do
+post("/users/login") do
     username = params["username"]
     password = params["password"]
 
@@ -243,7 +247,7 @@ post("/users/validate") do
         password_digest = BCrypt::Password.new(result.first["password_digest"])
         if password_digest == password
             session[:user_id] = result.first["id"]
-            redirect("/index")
+            redirect("/")
         else
             session[:error] = "Incorrect password"
             redirect("/users/login")
@@ -264,7 +268,7 @@ end
 get("/users/logout") do
     session[:user_id] = nil
 
-    redirect("/index")
+    redirect("/")
 end
 
 post("/users/new") do
@@ -272,11 +276,20 @@ post("/users/new") do
     password = params["password"]
     password_confirmation = params["password_confirm"]
 
+    # Password don't match
     if password != password_confirmation
         session[:error] = "Passwords do not match"
         session[:filled_username] = username
         redirect("users/register")
     end
+
+    # Don't allow empty usernames/passwords
+    if username.strip() == "" || password.strip() == ""
+        session[:error] = "Empty " + (username.strip() == "" ? "username" : "password")
+        session[:filled_username] = username
+        redirect("users/register")
+    end
+
 
     db = connect_to_db("database")
 
@@ -314,7 +327,6 @@ get("/debug") do
 
     slim(:"debug", locals:{"tables":tables, "selected": selected_table, "viewed_table": table})
 end
-
 
 post("/select_db") do
     session[:debug_table_selected] = params[:selected_db]
