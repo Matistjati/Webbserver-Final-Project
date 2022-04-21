@@ -10,5 +10,16 @@ end
 
 def get_field(db_name, table, field, id, rootDir="db")
     db = connect_to_db(db_name)
+    # You can't use ? on fields and tables
     return db.execute("SELECT #{field} FROM #{table} WHERE id = ?", [id]).first[field]
+end
+
+def match_path(path,paths)
+    for testPath in paths
+        if path == testPath || path == "/#{testPath}"
+            return true
+        end
+    end
+
+    return false
 end

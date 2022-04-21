@@ -2,7 +2,7 @@ require 'sinatra'
 require 'slim'
 require 'sqlite3'
 require 'bcrypt'
-require_relative 'common.rb'
+require_relative 'model.rb'
 
 enable :sessions
 
@@ -17,31 +17,47 @@ before do
     end
 
     # Super admin has access to everything
-    if permission_level > SUPER_ADMIN
+    if permission_level >= SUPER_ADMIN
         return
     end
 
     # If you are already logged in, you can't register or login
-    if session[:user_id] != nil and (path=="users/login" or path=="users/register" or path=="users/validate" or path=="users/new")
-        redirect("/index")
+    if session[:user_id] != nil && match_path(path, ["users/login", "users/register", "users/validate","users/new"])
+        redirect("/error/401")
     end
 
     
-
+    puts(path)
     # Only allow super admins to access debug
-    if path=="debug" or path=="add_row" or path=="delete_row" or path=="select_db"
-        redirect("/index")
+    if match_path(path, ["debug","add_row","delete_row","select_db"])
+        redirect("/error/401")
     end
 
     # 401, can't create problem anonymously
     puts(path)
-    if session[:user_id] == nil and (path=="/problems/new")
+    if session[:user_id] == nil && match_path(path, ["problems/new"])
         redirect("/index")
     end
 
 end
 
+get("/error/:id") do
+    errors = 
+    {
+        404 => "Page does not exist",
+        401 => "Unauthorized access"
+    }
 
+    if errors.has_key?(params[:id].to_i)
+        error_id = params[:id].to_i.to_s == params[:id] ? params[:id].to_i : 404
+    else
+        redirect("/errors/404")
+    end
+
+    puts(error_id)
+    puts(errors[error_id])
+    slim(:error, locals:{"error_message": errors[error_id], "error_id": error_id})
+end
 
 get("/index") do
     username = nil
@@ -341,5 +357,5 @@ post("/delete_row") do
 end
 
 not_found do
-    #redirect("/index")
+    redirect("/error/404")
 end
