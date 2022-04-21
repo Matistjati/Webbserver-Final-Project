@@ -15,6 +15,7 @@ end
 def get_field(db_name, table, field, id, rootDir="db")
     db = connect_to_db(db_name)
     # You can't use ? on fields and tables
+    puts("SELECT #{field} FROM #{table} WHERE id = #{id}")
     return db.execute("SELECT #{field} FROM #{table} WHERE id = ?", [id]).first[field]
 end
 

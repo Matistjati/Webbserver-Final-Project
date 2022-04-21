@@ -45,7 +45,7 @@ before("/problems/:id/*") do
         redirect("error/401")
     end
 
-    if string_is_int(params["id"]) && get_field("database", "posts", "author_id", session[:user_id]).to_i != session[:user_id]
+    if string_is_int(params["id"]) && get_field("database", "posts", "author_id", params["id"].to_i).to_i != session[:user_id]
         redirect("error/401")
     end
 end
