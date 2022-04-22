@@ -1,0 +1,24 @@
+.index-tags
+    h1 All problems
+    p
+        a href="../" Home
+
+    -if user_id != nil
+        p
+            a href="new" Create a new tag
+
+    h2 Create tag 
+
+    form action="/tags" method="POST"
+        input type="text" name="tag_name"
+        input type="submit" value="Create tag"
+
+    h2 Tags
+
+    -for tag in tags
+        p
+            p #{tag["tag_name"]}
+            - if tag['author_id'].to_i==user_id or permission_level.to_i > 1
+                form action="/tags/#{tag['id']}/delete" method="POST"
+                    input type="submit" value="X"
+            

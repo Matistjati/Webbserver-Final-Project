@@ -10,7 +10,7 @@ enable :sessions
 
 before do
     path = request.path_info
-
+    
     permission_level = 0
     if session[:user_id] != nil
         permission_level = get_field("database", "users", "permission_level", session[:user_id]).to_i
@@ -50,6 +50,26 @@ before("/problems/:id/*") do
     end
 end
 
+before("/tags/:id/*") do
+    if session[:user_id] == nil
+        redirect("error/401")
+    end
+
+    if string_is_int(params["id"]) && get_field("database", "tags", "author_id", params["id"].to_i).to_i != session[:user_id]
+        redirect("error/401")
+    end
+end
+
+get("/") do
+    username = nil
+    permission_level = 0
+    if session[:user_id] != nil
+        username = get_field("database", "users", "username", session[:user_id])
+        permission_level = get_field("database", "users", "permission_level", session[:user_id]).to_i
+    end
+
+    slim(:index, locals:{"username": username, "permission_level": permission_level})
+end
 
 get("/error/:id") do
     errors = 
@@ -70,15 +90,65 @@ get("/error/:id") do
     slim(:error, locals:{"error_message": errors[error_id], "error_id": error_id})
 end
 
-get("/") do
-    username = nil
+get("/tags/") do
+
+    db = connect_to_db("database")
+    tags = db.execute("SELECT id, author_id, tag_name FROM tags")
+
     permission_level = 0
+
     if session[:user_id] != nil
-        username = get_field("database", "users", "username", session[:user_id])
-        permission_level = get_field("database", "users", "permission_level", session[:user_id]).to_i
+        permission_level = get_field("database", "users", "permission_level", session[:user_id])
     end
 
-    slim(:index, locals:{"username": username, "permission_level": permission_level})
+    error = session[:error]
+    session[:error] = nil
+
+    slim(:"tags/index", locals:{"tags":tags, "user_id": session[:user_id], "permission_level": permission_level, "error": error})
+end
+
+post("/tags") do
+    if session[:user_id] == nil
+        redirect("error/401")
+    end
+
+    tag_name = params["tag_name"]
+
+    db = connect_to_db("database")
+
+    result = db.execute("SELECT tag_name FROM tags where tag_name = ?", tag_name)
+
+    if result.empty?
+        db.execute("INSERT INTO tags(tag_name, author_id) VALUES (?,?)", [tag_name,session[:user_id]])
+
+        redirect("/tags/")
+    else
+        session[:error] = "Another tag named #{tag_name} already exists"
+        redirect("/tags/")
+    end
+
+end
+
+post("/tags/:id/delete") do
+    if session[:user_id] == nil || !string_is_int(params["id"])
+        return
+    end
+
+    db = connect_to_db("database")
+
+    post_info = db.execute("SELECT id, tag_name, author_id FROM tags WHERE id = ?", [params[:id]]).first
+
+    
+
+    # If not author, do not allow
+    # If super admin, do allow (normal admins shouldn't be able to delete)
+    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
+        redirect("/error/401")
+    end
+
+    db.execute("DELETE FROM tags WHERE id = ?", params[:id])
+
+    redirect("/tags/")
 end
 
 get("/problems/") do
