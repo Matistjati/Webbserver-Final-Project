@@ -22,7 +22,7 @@ before do
     end
 
     # If you are already logged in, you can't register or login
-    if session[:user_id] != nil && match_path(path, ["users/login", "users/register", "users/validate","users/new"])
+    if session[:user_id] != nil && match_path(path, ["users/login", "users/new", "users/validate","users/new"])
         redirect("/error/401")
     end
 
@@ -142,6 +142,7 @@ post("/tags/:id/delete") do
 
     # If not author, do not allow
     # If super admin, do allow (normal admins shouldn't be able to delete)
+    puts(get_field("database", "users", "permission_level", session[:user_id]).to_i)
     if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
         redirect("/error/401")
     end
@@ -326,13 +327,13 @@ post("/users/login") do
 
 end
 
-get("/users/register") do
+get("/users/new") do
     register_error = session[:error]
     session[:error] = nil
     filled_username = session[:filled_username]
     session[:filled_username] = nil
 
-    slim(:"users/register", locals:{"error":register_error, "filled_username": filled_username})
+    slim(:"users/new", locals:{"error":register_error, "filled_username": filled_username})
 end
 
 get("/users/logout") do
@@ -341,7 +342,7 @@ get("/users/logout") do
     redirect("/")
 end
 
-post("/users/new") do
+post("/users") do
     username = params["username"]
     password = params["password"]
     password_confirmation = params["password_confirm"]
@@ -350,14 +351,14 @@ post("/users/new") do
     if password != password_confirmation
         session[:error] = "Passwords do not match"
         session[:filled_username] = username
-        redirect("users/register")
+        redirect("users/new")
     end
 
     # Don't allow empty usernames/passwords
     if username.strip() == "" || password.strip() == ""
         session[:error] = "Empty " + (username.strip() == "" ? "username" : "password")
         session[:filled_username] = username
-        redirect("users/register")
+        redirect("users/new")
     end
 
 
@@ -369,10 +370,10 @@ post("/users/new") do
         password_digest = BCrypt::Password.create(password)
         db.execute("INSERT INTO users(username, password_digest, permission_level) VALUES (?,?,#{NORMAL_USER})", [username, password_digest])
         session[:user_id] = db.execute("SELECT id from users WHERE username = ?", [username]).first["id"]
-        redirect("../index")
+        redirect("/")
     else
         session[:error] = "Username already exists"
-        redirect("users/register")
+        redirect("users/new")
     end
 
 
@@ -439,5 +440,5 @@ post("/delete_row") do
 end
 
 not_found do
-    redirect("/error/404")
+    #redirect("/error/404")
 end
