@@ -8,7 +8,6 @@ require_relative 'model.rb'
 
 enable :sessions
 
-# TODO: public psot display tags
 
 before do
     path = request.path_info
@@ -183,6 +182,7 @@ get("/problems/") do
         tags = db.execute("SELECT tag_name FROM tags INNER JOIN tag_post_relations rel WHERE tags.id = rel.tag_id AND rel.post_id=?", [problem["id"]])
 
         problem["tags"] = Set[]
+        problem["author_name"] = db.execute("SELECT username FROM users WHERE id=?", [problem["author_id"].to_i]).first["username"]
 
         for tag in tags
             problem["tags"].add(tag["tag_name"])
@@ -265,11 +265,11 @@ get("/problems/:id") do
 
     post_info = db.execute("SELECT content_path, post_name, author_id FROM posts WHERE id = ?", [params[:id]]).first
     tags = db.execute("SELECT tag_name FROM tags INNER JOIN tag_post_relations rel WHERE tags.id = rel.tag_id AND rel.post_id=?", [params[:id]])
-
+    author_name = get_field("database", "users", "username", post_info["author_id"])
 
     content = File.read(post_info["content_path"])
 
-    slim(:"problems/show", locals:{"name":post_info["post_name"], "content": content, "tags": tags})
+    slim(:"problems/show", locals:{"name":post_info["post_name"], "content": content, "tags": tags, "author_name": author_name})
 end
 
 get("/problems/:id/edit") do    
