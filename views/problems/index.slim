@@ -10,10 +10,21 @@
     h2 Problems
 
     form action="update_filter" method="POST"
-        input type="text" name="query" placeholder="search for tags"
+        - query_text = ""
+        - if tag_query != nil 
+            - for tag in tag_query 
+                - query_text += tag + ", "
+        - if query_text.length > 0
+            - query_text = query_text[0...-2]
+
+        input type="text" name="query" placeholder="search for tags" value="#{query_text}"
         select name="query_type"
-            option value="or" any
-            option value="and" all
+            -if query_type == "or"
+                <option value="or" selected> any
+                option value="and" all
+            -else
+                option value="or" any
+                <option value="and" selected> all
         input type="submit" text="Search"
 
     br
@@ -21,13 +32,13 @@
         -for problem in problems
             tr
                 td
-                    a href="/problems/#{problem[0]}" #{problem[1]["post_name"]}
+                    a href="/problems/#{problem['id']}" #{problem["post_name"]}
                 td
-                    - if problem[1]['author_id'].to_i==user_id or permission_level.to_i > 1
-                        a href="/problems/#{problem[0]}/edit"          edit
+                    - if problem['author_id'].to_i==user_id or permission_level.to_i > 1
+                        a href="/problems/#{problem['id']}/edit"          edit
                 td
                     -tagStr = ""
-                    -for tag in problem[1]["tags"] do
+                    -for tag in problem["tags"] do
                         -tagStr += tag + ", "
                     - if tagStr.length > 2
                         -tagStr = tagStr[0...-2]

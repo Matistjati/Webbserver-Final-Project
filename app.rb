@@ -8,7 +8,7 @@ require_relative 'model.rb'
 
 enable :sessions
 
-
+# TODO: public psot display tags
 
 before do
     path = request.path_info
@@ -174,62 +174,56 @@ get("/problems/") do
 
 
 
-    problems = db.execute("SELECT p.id, p.author_id, p.post_name, t.tag_name FROM posts p INNER JOIN tag_post_relations rel INNER JOIN tags t where t.id = rel.tag_id AND p.id = rel.post_id")
+    problems = db.execute("SELECT id, author_id, post_name FROM posts")
 
-    
-    mergedProblems = {}
+    finalProblems = []
     for problem in problems
-        if mergedProblems.has_key?(problem["id"])
-            mergedProblems[problem["id"]]["tags"].add(problem["tag_name"])
-        else
-            mergedProblems[problem["id"]] = {}
-            mergedProblems[problem["id"]]["post_name"] = problem["post_name"]
-            mergedProblems[problem["id"]]["author_id"] = problem["author_id"]
-            mergedProblems[problem["id"]]["tags"] = Set[problem["tag_name"]]
+        # Get all tags
+        
+        tags = db.execute("SELECT tag_name FROM tags INNER JOIN tag_post_relations rel WHERE tags.id = rel.tag_id AND rel.post_id=?", [problem["id"]])
+
+        problem["tags"] = Set[]
+
+        for tag in tags
+            problem["tags"].add(tag["tag_name"])
         end
-    end
 
-    print(mergedProblems)
-    puts("\n\n\n")
+        
+        if session[:tag_query] != nil and session[:tag_query].length > 0 and session[:query_type] != nil
+            matching = []
+            for tag in session[:tag_query]
+                matching.push(problem["tags"].include?(tag))
+            end
 
-
-    # Safe user input
-    if session["query_type"] == "and"
-        # All must be present
-        if session["tag_query"].length > 0
-            for problem in mergedProblems
-                good = true
-                for tag in session["tag_query"] do
-                    if not problem["tags"].include?(tag)
-                        good = false
-                        break
-                    end
+            
+            if session[:query_type] == "and"
+                if matching.all?
+                    finalProblems.push(problem)
                 end
-
-                if not good
-                    mergedProblems.delete(problem)
+            else # Default to or
+                if matching.any?
+                    finalProblems.push(problem)
                 end
             end
+        else
+            finalProblems.push(problem)
         end
-    # Default to or
-    else
-        sep="OR"
     end
 
 
     
 
-    slim(:"problems/index", locals:{"problems":mergedProblems, "user_id": session[:user_id], "permission_level": permission_level})
+    slim(:"problems/index", locals:{"problems":finalProblems, "user_id": session[:user_id], "permission_level": permission_level, "tag_query": session[:tag_query], "query_type": session[:query_type]})
 end
 
-get("/problems/update_filter") do
+post("/problems/update_filter") do
     tags = params["query"]
     tags = tags.split(",")
     tags = tags.collect(&:strip)
     
 
-    session["tag_query"] = tags
-    session["query_type"] = params["query_type"]
+    session[:tag_query] = tags
+    session[:query_type] = params["query_type"]
     redirect("/problems/")
 end
 
@@ -270,10 +264,12 @@ get("/problems/:id") do
     db = connect_to_db("database")
 
     post_info = db.execute("SELECT content_path, post_name, author_id FROM posts WHERE id = ?", [params[:id]]).first
+    tags = db.execute("SELECT tag_name FROM tags INNER JOIN tag_post_relations rel WHERE tags.id = rel.tag_id AND rel.post_id=?", [params[:id]])
+
 
     content = File.read(post_info["content_path"])
 
-    slim(:"problems/show", locals:{"name":post_info["post_name"], "content": content})
+    slim(:"problems/show", locals:{"name":post_info["post_name"], "content": content, "tags": tags})
 end
 
 get("/problems/:id/edit") do    

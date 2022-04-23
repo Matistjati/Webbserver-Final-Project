@@ -5,3 +5,15 @@
         a href="/problems/" Problems
 
     p #{content}
+
+    h3 Tags 
+    - query_text = ""
+    - if tags != nil 
+        - for tag in tags 
+            - query_text += tag["tag_name"] + ", "
+    - if query_text.length > 0
+        - query_text = query_text[0...-2]
+    p #{query_text}
+
+
+    
