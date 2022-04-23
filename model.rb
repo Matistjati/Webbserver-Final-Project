@@ -28,3 +28,13 @@ def match_path(path,paths)
 
     return false
 end
+
+def is_super_admin(user_id)
+    if user_id == nil
+        return false
+    end
+
+    permission_level = get_field("database", "users", "permission_level", session[:user_id]).to_i
+
+    return permission_level >= SUPER_ADMIN
+end

@@ -5,9 +5,20 @@
         a href="/problems/" Problems
 
     form action="update" method="POST"
+        p Problem text
         textarea name="content" cols="80" rows="10" #{content}
         br
         
+        - tagStr = ""
+        - for tag in tags do 
+            -tagStr += tag+", "
+        -if tagStr.length > 0
+            - tagStr = tagStr[0...-2]
+
+        p Tags
+
+        textarea name="tags" cols="80" rows="3" #{tagStr}
+        br
 
         input type="submit" value="Save"
 

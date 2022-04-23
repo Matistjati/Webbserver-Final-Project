@@ -2,7 +2,9 @@ require 'sinatra'
 require 'slim'
 require 'sqlite3'
 require 'bcrypt'
+require 'set'
 require_relative 'model.rb'
+
 
 enable :sessions
 
@@ -17,7 +19,7 @@ before do
     end
 
     # Super admin has access to everything
-    if permission_level >= SUPER_ADMIN
+    if is_super_admin(session[:user_id])
         return
     end
 
@@ -41,8 +43,12 @@ before do
 end
 
 before("/problems/:id/*") do
-    if session[:user_id] == nil
+    if session[:user_id] == nil || !string_is_int(params["id"])
         redirect("error/401")
+    end
+
+    if is_super_admin(session[:user_id])
+        return
     end
 
     if string_is_int(params["id"]) && get_field("database", "posts", "author_id", params["id"].to_i).to_i != session[:user_id]
@@ -51,8 +57,12 @@ before("/problems/:id/*") do
 end
 
 before("/tags/:id/*") do
-    if session[:user_id] == nil
+    if session[:user_id] == nil || !string_is_int(params["id"])
         redirect("error/401")
+    end
+
+    if is_super_admin(session[:user_id])
+        return
     end
 
     if string_is_int(params["id"]) && get_field("database", "tags", "author_id", params["id"].to_i).to_i != session[:user_id]
@@ -153,17 +163,74 @@ post("/tags/:id/delete") do
 end
 
 get("/problems/") do
-
-    db = connect_to_db("database")
-    problems = db.execute("SELECT id, author_id, post_name FROM posts")
-
     permission_level = 0
 
     if session[:user_id] != nil
         permission_level = get_field("database", "users", "permission_level", session[:user_id])
     end
 
-    slim(:"problems/index", locals:{"problems":problems, "user_id": session[:user_id], "permission_level": permission_level})
+    db = connect_to_db("database")
+
+
+
+
+    problems = db.execute("SELECT p.id, p.author_id, p.post_name, t.tag_name FROM posts p INNER JOIN tag_post_relations rel INNER JOIN tags t where t.id = rel.tag_id AND p.id = rel.post_id")
+
+    
+    mergedProblems = {}
+    for problem in problems
+        if mergedProblems.has_key?(problem["id"])
+            mergedProblems[problem["id"]]["tags"].add(problem["tag_name"])
+        else
+            mergedProblems[problem["id"]] = {}
+            mergedProblems[problem["id"]]["post_name"] = problem["post_name"]
+            mergedProblems[problem["id"]]["author_id"] = problem["author_id"]
+            mergedProblems[problem["id"]]["tags"] = Set[problem["tag_name"]]
+        end
+    end
+
+    print(mergedProblems)
+    puts("\n\n\n")
+
+
+    # Safe user input
+    if session["query_type"] == "and"
+        # All must be present
+        if session["tag_query"].length > 0
+            for problem in mergedProblems
+                good = true
+                for tag in session["tag_query"] do
+                    if not problem["tags"].include?(tag)
+                        good = false
+                        break
+                    end
+                end
+
+                if not good
+                    mergedProblems.delete(problem)
+                end
+            end
+        end
+    # Default to or
+    else
+        sep="OR"
+    end
+
+
+    
+
+    slim(:"problems/index", locals:{"problems":mergedProblems, "user_id": session[:user_id], "permission_level": permission_level})
+end
+
+get("/problems/update_filter") do
+    tags = params["query"]
+    tags = tags.split(",")
+    tags = tags.collect(&:strip)
+    
+
+    session["tag_query"] = tags
+    session["query_type"] = params["query_type"]
+    redirect("/problems/")
 end
 
 get("/problems/new") do
@@ -234,8 +301,15 @@ get("/problems/:id/edit") do
     info_message = session[:info_message]
     session[:info_message] = nil
 
+    tags = db.execute("SELECT tag_name FROM tags INNER JOIN tag_post_relations WHERE tags.id = tag_post_relations.tag_id AND tag_post_relations.post_id=?", [params["id"].to_i])
 
-    slim(:"problems/edit", locals:{"name":post_info["post_name"], "content": content, "info_message": info_message})
+    sortedTags = []
+    for tag in tags do
+        sortedTags.push(tag[0])
+    end
+    sortedTags = sortedTags.sort()
+
+    slim(:"problems/edit", locals:{"name":post_info["post_name"], "content": content, "info_message": info_message, "tags":sortedTags})
 end
 
 post("/problems/:id/delete") do
@@ -282,12 +356,36 @@ post("/problems/:id/update") do
         redirect("/error/401")
     end
 
-
+    # Update post content
     # If the file somehow doesn't exist, cry about it
     if not File.exist?(post_info["content_path"]) 
         redirect("/error/500")
     end
     File.open(post_info["content_path"], "w") { |file| file.write(params["content"])}
+
+    # Update tags
+    tags = params["tags"]
+    tags = tags.split(",")
+    tags = tags.collect(&:strip)
+    
+    # Get id of tags
+    tag_ids = []
+    for tag in tags
+        result = db.execute("SELECT id FROM tags WHERE tag_name = ?", [tag])
+        if result.length > 0
+            tag_ids.push(result.first["id"])
+        end
+    end
+
+    print(tag_ids)
+
+    # Remove old tags
+    db.execute("DELETE FROM tag_post_relations WHERE post_id = ?", [params["id"]])
+    
+    # Add new tags
+    for tag in tag_ids
+        db.execute("INSERT INTO tag_post_relations (post_id, tag_id) VALUES (?, ?)", [params["id"].to_i, tag])
+    end
 
     session[:info_message] = "Saved!"
 
