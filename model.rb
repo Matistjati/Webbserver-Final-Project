@@ -16,7 +16,6 @@ end
 def get_field(table, field, id, db_name="database", rootDir="db")
     db = connect_to_db(db_name)
     # You can't use ? on fields and tables
-    puts("SELECT #{field} FROM #{table} WHERE id = #{id}")
     return db.execute("SELECT #{field} FROM #{table} WHERE id = ?", [id]).first[field]
 end
 
@@ -71,7 +70,6 @@ def insert_into(fields, table, values, database="database")
     question_tuple = question_tuple[0...-1]
     question_tuple += ")"
 
-    print("INSERT INTO #{table}(#{fields}) VALUES #{question_tuple}")
     db.execute("INSERT INTO #{table}(#{fields}) VALUES #{question_tuple}", values)
 end
 
@@ -143,6 +141,12 @@ def user_ok(username, password, password_confirm)
         return false
     end
 
+    if not is_password_strong?(password)
+        session[:error] = "Password too weak. Must include 1 lowercase, uppercase, number and special character and be atleast 8 long"
+        session[:filled_username] = username
+        return false
+    end
+
     if not can_log_in()
         session[:error] = "Wait a few seconds"
         return false
@@ -156,4 +160,26 @@ def user_ok(username, password, password_confirm)
     end
 
     return true
+end
+
+def is_password_strong?(password)
+    # ^ start
+    # (?=.*[A-Z]) Atleast one uppercase character
+    # (?=.*[a-z]) Atleast one lowercase character
+    # (?=.*[0-9]) Atleast one number
+    # (?=.*[!@#$%^&*_]) Atleast one special character
+    # (?=.{8,}) Atleast 8 long
+    return password.match(/^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9])(?=.*[!@#$%^&*_])(?=.{8,})/)
+end
+
+def delete_tag_relations(author_id, database="database")
+    db = connect_to_db(database)
+
+    db.execute("DELETE FROM tag_post_relations
+                WHERE tag_id IN (
+                    SELECT t.id FROM tag_post_relations rel
+                    INNER JOIN tags t
+                    ON (t.id=rel.tag_id)
+                    WHERE t.author_id = ?
+                );", author_id)
 end

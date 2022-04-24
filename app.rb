@@ -462,6 +462,12 @@ post("/users/:id/update") do
         redirect("/users/#{params[:id]}/edit")
     end
 
+    if not is_password_strong?(password)
+        session[:error] = "Password too weak. Must include 1 lowercase, uppercase, number and special character and be atleast 8 long"
+        session[:filled_username] = username
+        redirect("/users/#{params[:id]}/edit")
+    end
+
     match = get_fields("username", "users", "username", username)
     if match.empty?
         if username.strip() == ""
@@ -498,11 +504,8 @@ post("/users/:id/delete") do
 
     delete_where("users", "id", session[:user_id])
     # Cascading deletions
-    tags = get_fields("id", "tags", "author_id", session[:user_id])
-
-    for tag in tags
-        delete_where("tag_post_relations", "tag_id", tag["id"])
-    end
+    
+    delete_tag_relations(session[:user_id])
     delete_where("tags", "author_id", session[:user_id])
 
     posts = get_fields("id, content_path", "posts", "author_id", session[:user_id])
