@@ -1,0 +1,22 @@
+.edit-user
+    a href="/" Home
+
+    form action="update" method="POST"
+        p Update username
+        input name="username" type="text" value="#{username}"
+        br
+        p Update password
+        input name="password" type="password" placeholder="password"
+        input name="password_confirm" type="password" placeholder="confirm password"
+        br
+        input type="submit" value="Update"
+
+    - if error != nil
+        p #{error}
+
+    br
+    br
+    br
+    p Delete account
+    form action="delete" method="POST"
+        input type="submit" value="Delete account"

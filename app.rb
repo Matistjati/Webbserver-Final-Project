@@ -48,7 +48,8 @@ before("/problems/:id/*") do
         return
     end
 
-    if string_is_int(params["id"]) && get_field("posts", "author_id", params["id"].to_i).to_i != session[:user_id]
+
+    if string_is_int(params["id"]) and not get_fields("author_id", "posts", "id", params["id"]).empty? and get_fields("author_id", "posts", "id", params["id"]).first["author_id"] != session[:user_id]
         redirect("/error/401")
     end
 end
@@ -62,7 +63,7 @@ before("/tags/:id/*") do
         return
     end
 
-    if string_is_int(params["id"]) && get_field("tags", "author_id", params["id"].to_i).to_i != session[:user_id]
+    if string_is_int(params["id"]) and not get_field("tags", "author_id", params["id"].to_i).empty? and get_field("tags", "author_id", params["id"].to_i).first["author_id"] != session[:user_id]
         redirect("/error/401")
     end
 end
@@ -75,7 +76,7 @@ get("/") do
         permission_level = get_field("users", "permission_level", session[:user_id]).to_i
     end
 
-    slim(:index, locals:{"username": username, "permission_level": permission_level})
+    slim(:index, locals:{"username": username, "permission_level": permission_level, "id": session[:user_id]})
 end
 
 get("/error/:id") do
@@ -138,15 +139,14 @@ end
 
 post("/tags/:id/delete") do
     if session[:user_id] == nil || !string_is_int(params["id"])
-        return
+        redirect("/error/401")
     end
 
     post_info = get_fields("id, tag_name, author_id", "tags", "id", params[:id]).first
 
     # If not author, do not allow
     # If super admin, do allow (normal admins shouldn't be able to delete)
-    puts(get_field("users", "permission_level", session[:user_id]).to_i)
-    if post_info["author_id"].to_i != session[:user_id] and get_field("users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
+    if not is_super_admin(session[:user_id]) and (post_info == nil or post_info["author_id"].to_i != session[:user_id])
         redirect("/error/401")
     end
 
@@ -226,7 +226,6 @@ get("/problems/new") do
 end
 
 post("/problems") do
-    puts("in problems")
     if session[:user_id] == nil
         redirect("/error/401")
     end
@@ -266,7 +265,7 @@ end
 
 get("/problems/:id/edit") do    
     if session[:user_id] == nil || !string_is_int(params["id"])
-        return
+        redirect("/error/401")
     end
 
     post_info = get_fields("content_path, post_name, author_id", "posts", "id", params[:id]).first
@@ -274,7 +273,7 @@ get("/problems/:id/edit") do
     
     # If not author, do not allow
     # If admin, do allow
-    if post_info["author_id"].to_i != session[:user_id] and not is_admin(session[:user_id])
+    if not is_admin(session[:user_id]) and (post_info == nil or post_info["author_id"].to_i != session[:user_id])
         redirect("/error/401")
     end
 
@@ -300,16 +299,17 @@ end
 
 post("/problems/:id/delete") do
     if session[:user_id] == nil || !string_is_int(params["id"])
-        return
+        redirect("/error/401")
     end
 
     post_info = get_fields("content_path, post_name, author_id", "posts", "id", params[:id]).first
 
     # If not author, do not allow
     # If super admin, do allow (normal admins shouldn't be able to delete)
-    if post_info["author_id"].to_i != session[:user_id] and not is_super_admin(session[:user_id])
+    if not is_super_admin(session[:user_id]) and (post_info == nil or post_info["author_id"].to_i != session[:user_id])
         redirect("/error/401")
     end
+
 
     if File.exist?(post_info["content_path"]) 
         File.delete(post_info["content_path"])
@@ -324,7 +324,7 @@ end
 
 post("/problems/:id/update") do
     if session[:user_id] == nil || !string_is_int(params["id"])
-        return
+        redirect("/error/401")
     end
 
     if too_long(params["content"], 10000) or too_long(params["tags"], 500) # Posts and tags are allowed to be long
@@ -335,9 +335,10 @@ post("/problems/:id/update") do
 
     # If not author, do not allow
     # If admin, do allow
-    if post_info["author_id"].to_i != session[:user_id] and get_field("users", "permission_level", session[:user_id]).to_i < ADMIN
+    if not is_admin(session[:user_id]) and (post_info == nil or post_info["author_id"].to_i != session[:user_id])
         redirect("/error/401")
     end
+
 
     # Update post content
     # If the file somehow doesn't exist, cry about it
@@ -383,6 +384,11 @@ get("/users/login") do
 end
 
 post("/users/login") do
+    if not can_log_in()
+        session[:error] = "Wait a moment before trying again"
+        redirect("/users/login")
+    end
+
     username = params["username"]
     password = params["password"]
 
@@ -424,30 +430,102 @@ get("/users/logout") do
     redirect("/")
 end
 
-post("/users") do
+get("/users/:id/edit") do
+    if session[:user_id] == nil || !string_is_int(params["id"]) || params["id"].to_i != session[:user_id]
+        redirect("/error/401")
+    end
+
+    username = get_field("users", "username", session[:user_id])
+
+    error = session[:error]
+    session[:error] = nil
+
+    slim(:"users/edit", locals:{"username": username, "error": error, "id": session[:user_id]})
+end
+
+post("/users/:id/update") do
+    if session[:user_id] == nil || !string_is_int(params["id"]) || params["id"].to_i != session[:user_id]
+        redirect("/error/401")
+    end
+
+    if not can_log_in()
+        session[:error] = "Wait a few seconds"
+        redirect("/users/#{params[:id]}/edit")
+    end
+
     username = params["username"]
     password = params["password"]
     password_confirmation = params["password_confirm"]
 
     if too_long(username) or too_long(password)
-        redirect("/error/500")
+        session[:error] = "Too long"
+        redirect("/users/#{params[:id]}/edit")
     end
 
-    # Password don't match
-    if password != password_confirmation
-        session[:error] = "Passwords do not match"
-        session[:filled_username] = username
-        redirect("users/new")
+    match = get_fields("username", "users", "username", username)
+    if match.empty?
+        if username.strip() == ""
+            session[:error] = "Empty username"
+            redirect("/users/#{params[:id]}/edit")
+        end
+        update_table("users", "username", username, session[:user_id])
+        session[:error] = "Updated username"
+    else
+        session[:error] = "Username taken"
+        redirect("/users/#{params[:id]}/edit")
+    end
+    
+    if password.strip() != ""
+        if password != password_confirmation
+            session[:error] = "Passwords do not match"
+            session[:filled_username] = username
+            return false
+        end
+
+        password_digest = BCrypt::Password.create(password)
+        update_table("users", "password_digest", password_digest, session[:user_id])
+        session[:error] += (session[:error].length == 0 ? "Updated password" : " and password")
     end
 
-    # Don't allow empty usernames/passwords
-    if username.strip() == "" || password.strip() == ""
-        session[:error] = "Empty " + (username.strip() == "" ? "username" : "password")
-        session[:filled_username] = username
-        redirect("users/new")
+    redirect("/users/#{params[:id]}/edit")
+end
+
+
+post("/users/:id/delete") do
+    if session[:user_id] == nil || !string_is_int(params["id"]) || params["id"].to_i != session[:user_id]
+        redirect("/error/401")
     end
 
+    delete_where("users", "id", session[:user_id])
+    # Cascading deletions
+    tags = get_fields("id", "tags", "author_id", session[:user_id])
 
+    for tag in tags
+        delete_where("tag_post_relations", "tag_id", tag["id"])
+    end
+    delete_where("tags", "author_id", session[:user_id])
+
+    posts = get_fields("id, content_path", "posts", "author_id", session[:user_id])
+    for post in posts
+        delete_where("tag_post_relations", "post_id", post["id"])
+        if File.exist?(post["content_path"]) 
+            File.delete(post["content_path"])
+        end
+    end
+    delete_where("posts", "author_id", session[:user_id])
+
+    session.destroy()
+    redirect("/")
+end
+
+post("/users") do
+    username = params["username"]
+    password = params["password"]
+    password_confirmation = params["password_confirm"]
+
+    if not user_ok(username, password, password_confirmation)
+        redirect("/users/new")
+    end
 
     result = get_fields("id", "users", "username", username)
 
@@ -482,7 +560,7 @@ get("/debug") do
 end
 
 post("/select_db") do
-    if too_long(params[:select_db])
+    if params[:select_db] != nil and too_long(params[:select_db])
         redirect("/error/500")
     end
     session[:debug_table_selected] = params[:selected_db]

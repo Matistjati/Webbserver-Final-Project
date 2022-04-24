@@ -8,7 +8,9 @@
     - if username != nil
         p Welcome, #{username}
         p
-            a href="users/logout" log out
+            a href="/users/logout" log out
+        p 
+            a href="/users/#{id}/edit" edit profile
     -else
         p
             a href="users/login" login
