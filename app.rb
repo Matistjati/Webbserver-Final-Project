@@ -14,7 +14,7 @@ before do
     
     permission_level = 0
     if session[:user_id] != nil
-        permission_level = get_field("database", "users", "permission_level", session[:user_id]).to_i
+        permission_level = get_field("users", "permission_level", session[:user_id]).to_i
     end
 
     # Super admin has access to everything
@@ -28,14 +28,12 @@ before do
     end
 
     
-    puts(path)
     # Only allow super admins to access debug
     if match_path(path, ["debug","add_row","delete_row","select_db"])
         redirect("/error/401")
     end
 
     # 401, can't create problem anonymously
-    puts(path)
     if session[:user_id] == nil && match_path(path, ["problems/new", "problems"])
         redirect("/error/401")
     end
@@ -43,29 +41,29 @@ end
 
 before("/problems/:id/*") do
     if session[:user_id] == nil || !string_is_int(params["id"])
-        redirect("error/401")
+        redirect("/error/401")
     end
 
     if is_super_admin(session[:user_id])
         return
     end
 
-    if string_is_int(params["id"]) && get_field("database", "posts", "author_id", params["id"].to_i).to_i != session[:user_id]
-        redirect("error/401")
+    if string_is_int(params["id"]) && get_field("posts", "author_id", params["id"].to_i).to_i != session[:user_id]
+        redirect("/error/401")
     end
 end
 
 before("/tags/:id/*") do
     if session[:user_id] == nil || !string_is_int(params["id"])
-        redirect("error/401")
+        redirect("/error/401")
     end
 
     if is_super_admin(session[:user_id])
         return
     end
 
-    if string_is_int(params["id"]) && get_field("database", "tags", "author_id", params["id"].to_i).to_i != session[:user_id]
-        redirect("error/401")
+    if string_is_int(params["id"]) && get_field("tags", "author_id", params["id"].to_i).to_i != session[:user_id]
+        redirect("/error/401")
     end
 end
 
@@ -73,8 +71,8 @@ get("/") do
     username = nil
     permission_level = 0
     if session[:user_id] != nil
-        username = get_field("database", "users", "username", session[:user_id])
-        permission_level = get_field("database", "users", "permission_level", session[:user_id]).to_i
+        username = get_field("users", "username", session[:user_id])
+        permission_level = get_field("users", "permission_level", session[:user_id]).to_i
     end
 
     slim(:index, locals:{"username": username, "permission_level": permission_level})
@@ -89,25 +87,23 @@ get("/error/:id") do
     }
 
     if errors.has_key?(params[:id].to_i)
+        # If unknown error, default to 404
         error_id = params[:id].to_i.to_s == params[:id] ? params[:id].to_i : 404
     else
         redirect("/errors/404")
     end
 
-    puts(error_id)
-    puts(errors[error_id])
     slim(:error, locals:{"error_message": errors[error_id], "error_id": error_id})
 end
 
 get("/tags/") do
 
-    db = connect_to_db("database")
-    tags = db.execute("SELECT id, author_id, tag_name FROM tags")
+    tags = get_all_fields("id, author_id, tag_name", "tags")
 
     permission_level = 0
 
     if session[:user_id] != nil
-        permission_level = get_field("database", "users", "permission_level", session[:user_id])
+        permission_level = get_field("users", "permission_level", session[:user_id])
     end
 
     error = session[:error]
@@ -118,24 +114,26 @@ end
 
 post("/tags") do
     if session[:user_id] == nil
-        redirect("error/401")
+        redirect("/error/401")
+    end
+
+    if too_long(params["tag_name"])
+        redirect("/error/500")
     end
 
     tag_name = params["tag_name"]
 
-    db = connect_to_db("database")
+    exists = get_fields("tag_name", "tags", "tag_name", params["tag_name"])
 
-    result = db.execute("SELECT tag_name FROM tags where tag_name = ?", tag_name)
-
-    if result.empty?
-        db.execute("INSERT INTO tags(tag_name, author_id) VALUES (?,?)", [tag_name,session[:user_id]])
-
+    # Does the tag already exist
+    if exists.empty?
+        insert_into("tag_name, author_id", "tags", [tag_name,session[:user_id]])
+    
         redirect("/tags/")
     else
         session[:error] = "Another tag named #{tag_name} already exists"
         redirect("/tags/")
     end
-
 end
 
 post("/tags/:id/delete") do
@@ -143,20 +141,17 @@ post("/tags/:id/delete") do
         return
     end
 
-    db = connect_to_db("database")
-
-    post_info = db.execute("SELECT id, tag_name, author_id FROM tags WHERE id = ?", [params[:id]]).first
-
-    
+    post_info = get_fields("id, tag_name, author_id", "tags", "id", params[:id]).first
 
     # If not author, do not allow
     # If super admin, do allow (normal admins shouldn't be able to delete)
-    puts(get_field("database", "users", "permission_level", session[:user_id]).to_i)
-    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
+    puts(get_field("users", "permission_level", session[:user_id]).to_i)
+    if post_info["author_id"].to_i != session[:user_id] and get_field("users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
         redirect("/error/401")
     end
 
-    db.execute("DELETE FROM tags WHERE id = ?", params[:id])
+    delete_where("tags", "id", params[:id])
+    delete_where("tag_post_relations", "tag_id", params[:id])
 
     redirect("/tags/")
 end
@@ -165,30 +160,25 @@ get("/problems/") do
     permission_level = 0
 
     if session[:user_id] != nil
-        permission_level = get_field("database", "users", "permission_level", session[:user_id])
+        permission_level = get_field("users", "permission_level", session[:user_id])
     end
 
-    db = connect_to_db("database")
-
-
-
-
-    problems = db.execute("SELECT id, author_id, post_name FROM posts")
+    problems = get_all_fields("id, author_id, post_name", "posts")
 
     finalProblems = []
     for problem in problems
         # Get all tags
         
-        tags = db.execute("SELECT tag_name FROM tags INNER JOIN tag_post_relations rel WHERE tags.id = rel.tag_id AND rel.post_id=?", [problem["id"]])
+        tags = get_post_tags(problem["id"])
 
         problem["tags"] = Set[]
-        problem["author_name"] = db.execute("SELECT username FROM users WHERE id=?", [problem["author_id"].to_i]).first["username"]
+        problem["author_name"] = get_field("users", "username", problem["author_id"])
 
         for tag in tags
             problem["tags"].add(tag["tag_name"])
         end
 
-        
+        # Filter problems if we have a tag based filter
         if session[:tag_query] != nil and session[:tag_query].length > 0 and session[:query_type] != nil
             matching = []
             for tag in session[:tag_query]
@@ -210,18 +200,18 @@ get("/problems/") do
         end
     end
 
-
-    
-
     slim(:"problems/index", locals:{"problems":finalProblems, "user_id": session[:user_id], "permission_level": permission_level, "tag_query": session[:tag_query], "query_type": session[:query_type]})
 end
 
 post("/problems/update_filter") do
+    if too_long(params["query"], 500) or too_long(params["query_type"]) # List of tags might be long in practice
+        redirect("/error/500")
+    end
+
     tags = params["query"]
     tags = tags.split(",")
     tags = tags.collect(&:strip)
     
-
     session[:tag_query] = tags
     session[:query_type] = params["query_type"]
     redirect("/problems/")
@@ -236,20 +226,24 @@ get("/problems/new") do
 end
 
 post("/problems") do
+    puts("in problems")
     if session[:user_id] == nil
-        redirect("error/401")
+        redirect("/error/401")
+    end
+
+    if too_long(params["name"])
+        redirect("/error/500")
     end
 
     post_name = params["name"]
 
-    db = connect_to_db("database")
 
-    result = db.execute("SELECT post_name FROM posts where post_name = ?", post_name)
+    result = get_fields("post_name", "posts", "post_name", post_name)
 
     if result.empty?
-        db.execute("INSERT INTO posts(content_path, post_name, author_id) VALUES (?,?,?)", ["public/problems/#{post_name}.txt",post_name,session[:user_id]])
+        insert_into("content_path, post_name, author_id", "posts", ["public/problems/#{post_name}.txt",post_name,session[:user_id]])
         
-        post_id = db.execute("SELECT id FROM posts WHERE author_id = ?", [session[:user_id]]).last["id"]
+        post_id = get_fields("id", "posts", "post_name", post_name).last["id"]
         # Create an empty file for the post
         File.open("public/problems/#{post_name}.txt", "w") {}
         redirect("/problems/#{post_id}/edit")
@@ -261,11 +255,9 @@ post("/problems") do
 end
 
 get("/problems/:id") do
-    db = connect_to_db("database")
-
-    post_info = db.execute("SELECT content_path, post_name, author_id FROM posts WHERE id = ?", [params[:id]]).first
-    tags = db.execute("SELECT tag_name FROM tags INNER JOIN tag_post_relations rel WHERE tags.id = rel.tag_id AND rel.post_id=?", [params[:id]])
-    author_name = get_field("database", "users", "username", post_info["author_id"])
+    post_info = get_fields("content_path, post_name, author_id", "posts", "id", params[:id]).first
+    tags = get_post_tags(params[:id])
+    author_name = get_field("users", "username", post_info["author_id"])
 
     content = File.read(post_info["content_path"])
 
@@ -277,14 +269,12 @@ get("/problems/:id/edit") do
         return
     end
 
-    db = connect_to_db("database")
-
-    post_info = db.execute("SELECT content_path, post_name, author_id FROM posts WHERE id = ?", [params[:id]]).first
+    post_info = get_fields("content_path, post_name, author_id", "posts", "id", params[:id]).first
 
     
     # If not author, do not allow
     # If admin, do allow
-    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < ADMIN
+    if post_info["author_id"].to_i != session[:user_id] and not is_admin(session[:user_id])
         redirect("/error/401")
     end
 
@@ -297,7 +287,7 @@ get("/problems/:id/edit") do
     info_message = session[:info_message]
     session[:info_message] = nil
 
-    tags = db.execute("SELECT tag_name FROM tags INNER JOIN tag_post_relations WHERE tags.id = tag_post_relations.tag_id AND tag_post_relations.post_id=?", [params["id"].to_i])
+    tags = get_post_tags(params["id"])
 
     sortedTags = []
     for tag in tags do
@@ -313,15 +303,11 @@ post("/problems/:id/delete") do
         return
     end
 
-    db = connect_to_db("database")
-
-    post_info = db.execute("SELECT content_path, post_name, author_id FROM posts WHERE id = ?", [params[:id]]).first
-
-    
+    post_info = get_fields("content_path, post_name, author_id", "posts", "id", params[:id]).first
 
     # If not author, do not allow
     # If super admin, do allow (normal admins shouldn't be able to delete)
-    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < SUPER_ADMIN
+    if post_info["author_id"].to_i != session[:user_id] and not is_super_admin(session[:user_id])
         redirect("/error/401")
     end
 
@@ -330,7 +316,8 @@ post("/problems/:id/delete") do
     end
 
 
-    db.execute("DELETE FROM posts WHERE id = ?", params[:id])
+    delete_where("posts", "id", params[:id])
+    delete_where("tag_post_relations", "post_id", params[:id])
 
     redirect("/problems/")
 end
@@ -340,15 +327,15 @@ post("/problems/:id/update") do
         return
     end
 
+    if too_long(params["content"], 10000) or too_long(params["tags"], 500) # Posts and tags are allowed to be long
+        redirect("/error/500")
+    end
 
-    db = connect_to_db("database")
-
-    post_info = db.execute("SELECT content_path, post_name, author_id FROM posts WHERE id = ?", [params[:id]]).first
-
+    post_info = get_fields("content_path, post_name, author_id", "posts", "id", params[:id]).first
 
     # If not author, do not allow
     # If admin, do allow
-    if post_info["author_id"].to_i != session[:user_id] and get_field("database", "users", "permission_level", session[:user_id]).to_i < ADMIN
+    if post_info["author_id"].to_i != session[:user_id] and get_field("users", "permission_level", session[:user_id]).to_i < ADMIN
         redirect("/error/401")
     end
 
@@ -367,20 +354,18 @@ post("/problems/:id/update") do
     # Get id of tags
     tag_ids = []
     for tag in tags
-        result = db.execute("SELECT id FROM tags WHERE tag_name = ?", [tag])
+        result = get_fields("id", "tags", "tag_name", tag)
         if result.length > 0
             tag_ids.push(result.first["id"])
         end
     end
 
-    print(tag_ids)
-
     # Remove old tags
-    db.execute("DELETE FROM tag_post_relations WHERE post_id = ?", [params["id"]])
+    delete_where("tag_post_relations", "post_id", params["id"])
     
     # Add new tags
     for tag in tag_ids
-        db.execute("INSERT INTO tag_post_relations (post_id, tag_id) VALUES (?, ?)", [params["id"].to_i, tag])
+        insert_into("post_id, tag_id", "tag_post_relations",  [params["id"].to_i, tag])
     end
 
     session[:info_message] = "Saved!"
@@ -401,12 +386,15 @@ post("/users/login") do
     username = params["username"]
     password = params["password"]
 
-    db = connect_to_db("database")
+    if too_long(username) or too_long(password)
+        redirect("/error/500")
+    end
 
-    result = db.execute("SELECT id, password_digest FROM users WHERE username = ?", [username])
+    result = get_fields("id, password_digest", "users", "username", username)
 
     if result.empty?
-        session[:error] = "No user exists with that username"
+        # Don't give away too much info
+        session[:error] = "Failed login"
         redirect("/users/login")
     else
         password_digest = BCrypt::Password.new(result.first["password_digest"])
@@ -414,11 +402,11 @@ post("/users/login") do
             session[:user_id] = result.first["id"]
             redirect("/")
         else
-            session[:error] = "Incorrect password"
+            # Don't give away too much info
+            session[:error] = "Failed login"
             redirect("/users/login")
         end
     end
-
 end
 
 get("/users/new") do
@@ -431,7 +419,7 @@ get("/users/new") do
 end
 
 get("/users/logout") do
-    session[:user_id] = nil
+    session.destroy()
 
     redirect("/")
 end
@@ -440,6 +428,10 @@ post("/users") do
     username = params["username"]
     password = params["password"]
     password_confirmation = params["password_confirm"]
+
+    if too_long(username) or too_long(password)
+        redirect("/error/500")
+    end
 
     # Password don't match
     if password != password_confirmation
@@ -456,14 +448,13 @@ post("/users") do
     end
 
 
-    db = connect_to_db("database")
 
-    result = db.execute("SELECT id from users WHERE username=?", username)
+    result = get_fields("id", "users", "username", username)
 
     if result.empty?
         password_digest = BCrypt::Password.create(password)
-        db.execute("INSERT INTO users(username, password_digest, permission_level) VALUES (?,?,#{NORMAL_USER})", [username, password_digest])
-        session[:user_id] = db.execute("SELECT id from users WHERE username = ?", [username]).first["id"]
+        insert_into("username, password_digest, permission_level", "users", [username, password_digest, NORMAL_USER])
+        session[:user_id] = get_fields("id", "users", "username", username).first["id"]
         redirect("/")
     else
         session[:error] = "Username already exists"
@@ -478,22 +469,22 @@ get("/debug") do
     #session[:debug_table_selected] = "users"
     selected_table = session[:debug_table_selected]
 
-    db = connect_to_db("database")
-
     table = nil
     if selected_table != nil
         # If table is selected, get its data
-        table = db.execute("SELECT * FROM #{selected_table}")
+        table = get_all(selected_table)
     end
 
     # Get names of tables
-    tables = db.execute("SELECT name FROM sqlite_master WHERE type='table';")
-
+    tables = get_all_table_names()
 
     slim(:"debug", locals:{"tables":tables, "selected": selected_table, "viewed_table": table})
 end
 
 post("/select_db") do
+    if too_long(params[:select_db])
+        redirect("/error/500")
+    end
     session[:debug_table_selected] = params[:selected_db]
 
     redirect("/debug")
@@ -516,23 +507,19 @@ post("/add_row") do
 
     value += ")"
 
-    db = connect_to_db("database")
-    db.execute("INSERT INTO #{session[:debug_table_selected]} VALUES #{value}")
-
+    insert_into(session[:debug_table_selected], value)
 
     redirect("/debug")
 end
 
 post("/delete_row") do 
     row = params[:row].to_i
-
-    db = connect_to_db("database")
     
-    db.execute("DELETE FROM #{session[:debug_table_selected]} WHERE id in (SELECT id FROM #{session[:debug_table_selected]} LIMIT 1 OFFSET #{row})")
+    delete_nth_row(session[:debug_table_selected], row)
 
     redirect("/debug")
 end
 
 not_found do
-    #redirect("/error/404")
+    redirect("/error/404")
 end
