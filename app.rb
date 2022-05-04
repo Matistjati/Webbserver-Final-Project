@@ -10,76 +10,97 @@ enable :sessions
 
 include Model
 
-helpers do
-    def is_admin(user_id)
-        if user_id == nil
-            return false
-        end
-    
-        permission_level = get_field("users", "permission_level", session[:user_id]).to_i
-    
-        return permission_level >= ADMIN
+# Helper functions
+
+# Checks whether a user is an admin
+#
+# @param [Integer] user_id The user to check
+#
+# @return [Boolean] Whether the given user is an admin
+def is_admin(user_id)
+    if user_id == nil
+        return false
     end
 
-    def is_super_admin(user_id)
-        if user_id == nil
-            return false
-        end
-    
-        permission_level = get_field("users", "permission_level", session[:user_id]).to_i
-    
-        return permission_level >= SUPER_ADMIN
+    permission_level = get_field("users", "permission_level", session[:user_id]).to_i
+
+    return permission_level >= ADMIN
+end
+
+# Checks whether a user is a super admin
+#
+# @param [Integer] user_id The user to check
+#
+# @return [Boolean] Whether the given user is a super admin
+def is_super_admin(user_id)
+    if user_id == nil
+        return false
     end
 
-    def can_log_in()
-        d = Time.now.to_i
-    
-        if session[:last_login_attempt] == nil
+    permission_level = get_field("users", "permission_level", session[:user_id]).to_i
+
+    return permission_level >= SUPER_ADMIN
+end
+
+# Checks whether a the user has waited long enough to attempt a login
+#
+# @return [Boolean] Whether the user can make a login attempt
+def can_log_in()
+    d = Time.now.to_i
+
+    if session[:last_login_attempt] == nil
+        session[:last_login_attempt] = d
+        return true
+    else
+        if d-session[:last_login_attempt].to_i > LOGIN_COOLDOWN
             session[:last_login_attempt] = d
             return true
         else
-            if d-session[:last_login_attempt].to_i > LOGIN_COOLDOWN
-                session[:last_login_attempt] = d
-                return true
-            else
-                return false
-            end
+            return false
         end
     end
-    
-    def user_ok(username, password, password_confirm)
-        if too_long(username) or too_long(password)
-            session[:error] = "Too long"
-            return false
-        end
-    
-        # Password don't match
-        if password != password_confirm
-            session[:error] = "Passwords do not match"
-            session[:filled_username] = username
-            return false
-        end
-    
-        if not is_password_strong?(password)
-            session[:error] = "Password too weak. Must include 1 lowercase, uppercase, number and special character and be atleast 8 long"
-            session[:filled_username] = username
-            return false
-        end
-    
-        if not can_log_in()
-            session[:error] = "Wait a few seconds"
-            return false
-        end
-    
-        # Don't allow empty usernames/passwords
-        if username.strip() == "" || password.strip() == ""
-            session[:error] = "Empty " + (username.strip() == "" ? "username" : "password")
-            session[:filled_username] = username
-            return false
-        end
-    
-        return true
+end
+
+
+# Checks whether the credentials for a new account are valid
+#
+# @param [String] username The username of the credentials
+# @param [String] password The password of the credentials
+# @param [String] password_confirm The password confirmation of the credentials
+#
+# @return [Boolean] Whether we let the user register
+def user_ok(username, password, password_confirm)
+    if too_long(username) or too_long(password)
+        session[:error] = "Too long"
+        return false
     end
+
+    # Password don't match
+    if password != password_confirm
+        session[:error] = "Passwords do not match"
+        session[:filled_username] = username
+        return false
+    end
+
+    if not is_password_strong?(password)
+        session[:error] = "Password too weak. Must include 1 lowercase, uppercase, number and special character and be atleast 8 long"
+        session[:filled_username] = username
+        return false
+    end
+
+    if not can_log_in()
+        session[:error] = "Wait a few seconds"
+        return false
+    end
+
+    # Don't allow empty usernames/passwords
+    if username.strip() == "" || password.strip() == ""
+        session[:error] = "Empty " + (username.strip() == "" ? "username" : "password")
+        session[:filled_username] = username
+        return false
+    end
+
+    return true
 end
 
 
