@@ -61,7 +61,6 @@ def can_log_in()
     end
 end
 
-
 # Checks whether the credentials for a new account are valid
 #
 # @param [String] username The username of the credentials
@@ -69,6 +68,8 @@ end
 # @param [String] password_confirm The password confirmation of the credentials
 #
 # @return [Boolean] Whether we let the user register
+#
+# @see Model#is_password_strong?
 def user_ok(username, password, password_confirm)
     if too_long(username) or too_long(password)
         session[:error] = "Too long"
@@ -163,6 +164,7 @@ before("/tags/:id/*") do
     end
 end
 
+# Display the front page
 get("/") do
     username = nil
     permission_level = 0
@@ -174,6 +176,9 @@ get("/") do
     slim(:index, locals:{"username": username, "permission_level": permission_level, "id": session[:user_id]})
 end
 
+# Displays an error message
+#
+# @param [Integer] :id The id of the error
 get("/error/:id") do
     errors = 
     {
@@ -192,6 +197,7 @@ get("/error/:id") do
     slim(:error, locals:{"error_message": errors[error_id], "error_id": error_id})
 end
 
+# Displays all tags
 get("/tags/") do
 
     tags = get_all_fields("id, author_id, tag_name", "tags")
@@ -208,6 +214,11 @@ get("/tags/") do
     slim(:"tags/index", locals:{"tags":tags, "user_id": session[:user_id], "permission_level": permission_level, "error": error})
 end
 
+# Creates a new tag and redirects to /tags/ if successful, otherwise to /error/
+#
+# @param [String] tag_name The name of the tag
+#
+# @see Model#insert_into
 post("/tags") do
     if session[:user_id] == nil
         redirect("/error/401")
@@ -232,6 +243,11 @@ post("/tags") do
     end
 end
 
+# Deletes a tag and redirects to /tags/ if user has sufficient permissions, otherwise to /error/
+#
+# @param [Integer] :id The id of the tag to delete
+#
+# @see Model#delete_where
 post("/tags/:id/delete") do
     if session[:user_id] == nil || !string_is_int(params["id"])
         redirect("/error/401")
@@ -251,6 +267,9 @@ post("/tags/:id/delete") do
     redirect("/tags/")
 end
 
+# Displays all problems. Will filter posts based on their tags using session updated in /problems/update_filter.
+#
+# @see Model#get_post_tags
 get("/problems/") do
     permission_level = 0
 
@@ -298,6 +317,10 @@ get("/problems/") do
     slim(:"problems/index", locals:{"problems":finalProblems, "user_id": session[:user_id], "permission_level": permission_level, "tag_query": session[:tag_query], "query_type": session[:query_type]})
 end
 
+# Update the post filter used by /problems/. Redirects back to /problems/ if successful, or /error/500 if the data was invalid
+#
+# @param [String] query The tags to which must be present in some degree
+# @param [String] query_type Whether all or one tag must be present. Has valus "and" and "or"
 post("/problems/update_filter") do
     if too_long(params["query"], 500) or too_long(params["query_type"]) # List of tags might be long in practice
         redirect("/error/500")
@@ -312,6 +335,7 @@ post("/problems/update_filter") do
     redirect("/problems/")
 end
 
+# Display a page where the user can input the name of a new problem they want to create
 get("/problems/new") do
 
     error = session[:error]
@@ -320,6 +344,11 @@ get("/problems/new") do
     slim(:"problems/new", locals:{"error": error})
 end
 
+# Create a new problem. Also creates an empty text file on the server corresponding to the problem content
+#
+# @param [String] name The name of the problem
+#
+# @see Model#insert_into
 post("/problems") do
     if session[:user_id] == nil
         redirect("/error/401")
@@ -348,6 +377,12 @@ post("/problems") do
 
 end
 
+# Displays the contents of a problem, including its tags
+#
+# @param [Integer] :id The id of the problem
+#
+# @see Model#get_fields
+# @see Model#get_post_tags
 get("/problems/:id") do
     post_info = get_fields("content_path, post_name, author_id", "posts", "id", params[:id]).first
     tags = get_post_tags(params[:id])
@@ -358,6 +393,12 @@ get("/problems/:id") do
     slim(:"problems/show", locals:{"name":post_info["post_name"], "content": content, "tags": tags, "author_name": author_name})
 end
 
+# Displays a page for the user to edit a post and its tags. Redirects to /error/ if permissions are lacking
+#
+# @param [Integer] :id The id of the problem to edit
+#
+# @see Model#get_fields
+# @see Model#get_post_tags
 get("/problems/:id/edit") do    
     if session[:user_id] == nil || !string_is_int(params["id"])
         redirect("/error/401")
@@ -392,6 +433,12 @@ get("/problems/:id/edit") do
     slim(:"problems/edit", locals:{"name":post_info["post_name"], "content": content, "info_message": info_message, "tags":sortedTags})
 end
 
+# Delete a problem and its corresponding content text file. Redirects to /error/ if permissions are lacking, otherwise to /problems/
+#
+# @param [Integer] :id The id of the problem to delete
+#
+# @see Model#get_fields
+# @see Model#delete_where
 post("/problems/:id/delete") do
     if session[:user_id] == nil || !string_is_int(params["id"])
         redirect("/error/401")
@@ -417,6 +464,15 @@ post("/problems/:id/delete") do
     redirect("/problems/")
 end
 
+# Update a problem and its corresponding content text file. Redirects to /error/ if permissions are lacking, otherwise to /problems/:id
+#
+# @param [Integer] :id The id of the problem to update
+# @param [String] content The new problem statement
+# @param [String] tags A comma-separated list of the new tags
+#
+# @see Model#get_fields
+# @see Model#delete_where
+# @see Model#insert_into
 post("/problems/:id/update") do
     if session[:user_id] == nil || !string_is_int(params["id"])
         redirect("/error/401")
@@ -469,6 +525,7 @@ post("/problems/:id/update") do
     redirect("/problems/#{params[:id]}/edit")
 end
 
+# Displays a page for the user to type in their login credentials. 
 get("/users/login") do
     login_error = session[:error]
     session[:error] = nil
@@ -478,6 +535,13 @@ get("/users/login") do
     slim(:"users/login", locals:{"error":login_error, "filled_username": filled_username})
 end
 
+# Try to login a user. Redirects to /error/ if incorrect params, otherwise to /
+#
+# @param [String] username The username
+# @param [String] password The password
+#
+# @see Model#passwords_match
+# @see Model#get_fields
 post("/users/login") do
     if not can_log_in()
         session[:error] = "Wait a moment before trying again"
@@ -509,6 +573,7 @@ post("/users/login") do
     end
 end
 
+# Display a page where the user can create a new account
 get("/users/new") do
     register_error = session[:error]
     session[:error] = nil
@@ -518,12 +583,18 @@ get("/users/new") do
     slim(:"users/new", locals:{"error":register_error, "filled_username": filled_username})
 end
 
+# Log out a user, destroying their session. Redirects to /
 get("/users/logout") do
     session.destroy()
 
     redirect("/")
 end
 
+# Displays a page for the user to edit a user's username and password
+#
+# @param [Integer] :id The id of the user to edit
+#
+# @see Model#get_field
 get("/users/:id/edit") do
     if session[:user_id] == nil || !string_is_int(params["id"]) || params["id"].to_i != session[:user_id]
         redirect("/error/401")
@@ -537,6 +608,16 @@ get("/users/:id/edit") do
     slim(:"users/edit", locals:{"username": username, "error": error, "id": session[:user_id]})
 end
 
+# Update a user's credentials. Redirects to /error/ if username or password do not pass tests, otherwise to /users/:id/edit
+#
+# @param [Integer] :id The id of the user to update
+# @param [String] username The new username
+# @param [String] password The new password
+#
+# @see Model#too_long
+# @see Model#update_table
+# @see Model#is_password_strong?
+# @see Model#hash_password
 post("/users/:id/update") do
     if session[:user_id] == nil || !string_is_int(params["id"]) || params["id"].to_i != session[:user_id]
         redirect("/error/401")
@@ -591,7 +672,13 @@ post("/users/:id/update") do
     redirect("/users/#{params[:id]}/edit")
 end
 
-
+# Delete a user and all associated posts, tags, files, tag file relations etc., also destroying the current session. Redirects to /error/ if permissions are lacking, otherwise to /
+#
+# @param [Integer] :id The id of the user to delete
+#
+# @see Model#get_fields
+# @see Model#delete_where
+# @see Model#delete_tag_relations
 post("/users/:id/delete") do
     if session[:user_id] == nil || !string_is_int(params["id"]) || params["id"].to_i != session[:user_id]
         redirect("/error/401")
@@ -616,6 +703,16 @@ post("/users/:id/delete") do
     redirect("/")
 end
 
+# Create a new user, also logging them in at the same time. Redirects to /users/new if an error occured, otherwise to /
+#
+# @param [Integer] :id The id of the user to delete
+# @param [String] username The username of the account
+# @param [String] password The password of the account
+# @param [String] password_confirm The user's password confirmation
+#
+# @see Model#user_ok
+# @see Model#insert_into
+# @see Model#hash_password
 post("/users") do
     username = params["username"]
     password = params["password"]
@@ -634,12 +731,11 @@ post("/users") do
         redirect("/")
     else
         session[:error] = "Username already exists"
-        redirect("users/new")
+        redirect("/users/new")
     end
-
-
 end
 
+# Displays a page for super admins to edit and views tables. Supports adding and deleting rows. /select_db selects the table to view
 get("/debug") do
     # Get all tables
     #session[:debug_table_selected] = "users"
@@ -657,6 +753,7 @@ get("/debug") do
     slim(:"debug", locals:{"tables":tables, "selected": selected_table, "viewed_table": table})
 end
 
+# Select the table to view in /debug. Redirects to /debug
 post("/select_db") do
     if params[:select_db] != nil and too_long(params[:select_db])
         redirect("/error/500")
@@ -666,6 +763,12 @@ post("/select_db") do
     redirect("/debug")
 end
 
+# Insert a new row into a table. Only usable by super admins. Redirects to /debug
+#
+# @param [String] .. Each parameter is a key-value pair, its name being the name of the field and the value being the value of the field
+#
+# @see Model#hash_password
+# @see Model#insert_into
 post("/add_row") do
     value = "("
     for field in params do
@@ -688,6 +791,11 @@ post("/add_row") do
     redirect("/debug")
 end
 
+# Delete a row from debug. Only usable by super admins. Redirects to /debug
+#
+# @param [Integer] row The row to delete, 0-indexed
+#
+# @see Model#delete_nth_row
 post("/delete_row") do 
     row = params[:row].to_i
     
@@ -696,6 +804,7 @@ post("/delete_row") do
     redirect("/debug")
 end
 
+# If no route matches, redirect to /error/404
 not_found do
     redirect("/error/404")
 end

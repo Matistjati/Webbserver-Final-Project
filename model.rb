@@ -1,7 +1,11 @@
+# All model functions
 module Model
     # Different permission levels for users
+    # Normal users has basic acces
     NORMAL_USER = 1
+    # Admins can edit other profiles and posts
     ADMIN = 2
+    # Super admins can edit the database and delete other users, their tags and posts
     SUPER_ADMIN = 3
     # The number of seconds one must wait between attempting a login
     LOGIN_COOLDOWN = 3
