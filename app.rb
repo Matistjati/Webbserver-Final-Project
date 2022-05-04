@@ -8,6 +8,80 @@ require_relative 'model.rb'
 
 enable :sessions
 
+include Model
+
+helpers do
+    def is_admin(user_id)
+        if user_id == nil
+            return false
+        end
+    
+        permission_level = get_field("users", "permission_level", session[:user_id]).to_i
+    
+        return permission_level >= ADMIN
+    end
+
+    def is_super_admin(user_id)
+        if user_id == nil
+            return false
+        end
+    
+        permission_level = get_field("users", "permission_level", session[:user_id]).to_i
+    
+        return permission_level >= SUPER_ADMIN
+    end
+
+    def can_log_in()
+        d = Time.now.to_i
+    
+        if session[:last_login_attempt] == nil
+            session[:last_login_attempt] = d
+            return true
+        else
+            if d-session[:last_login_attempt].to_i > LOGIN_COOLDOWN
+                session[:last_login_attempt] = d
+                return true
+            else
+                return false
+            end
+        end
+    end
+    
+    def user_ok(username, password, password_confirm)
+        if too_long(username) or too_long(password)
+            session[:error] = "Too long"
+            return false
+        end
+    
+        # Password don't match
+        if password != password_confirm
+            session[:error] = "Passwords do not match"
+            session[:filled_username] = username
+            return false
+        end
+    
+        if not is_password_strong?(password)
+            session[:error] = "Password too weak. Must include 1 lowercase, uppercase, number and special character and be atleast 8 long"
+            session[:filled_username] = username
+            return false
+        end
+    
+        if not can_log_in()
+            session[:error] = "Wait a few seconds"
+            return false
+        end
+    
+        # Don't allow empty usernames/passwords
+        if username.strip() == "" || password.strip() == ""
+            session[:error] = "Empty " + (username.strip() == "" ? "username" : "password")
+            session[:filled_username] = username
+            return false
+        end
+    
+        return true
+    end
+end
+
 
 before do
     path = request.path_info
@@ -403,8 +477,7 @@ post("/users/login") do
         session[:error] = "Failed login"
         redirect("/users/login")
     else
-        password_digest = BCrypt::Password.new(result.first["password_digest"])
-        if password_digest == password
+        if passwords_match(result.first["password_digest"], password)
             session[:user_id] = result.first["id"]
             redirect("/")
         else
@@ -462,12 +535,6 @@ post("/users/:id/update") do
         redirect("/users/#{params[:id]}/edit")
     end
 
-    if not is_password_strong?(password)
-        session[:error] = "Password too weak. Must include 1 lowercase, uppercase, number and special character and be atleast 8 long"
-        session[:filled_username] = username
-        redirect("/users/#{params[:id]}/edit")
-    end
-
     match = get_fields("username", "users", "username", username)
     if match.empty?
         if username.strip() == ""
@@ -488,7 +555,14 @@ post("/users/:id/update") do
             return false
         end
 
-        password_digest = BCrypt::Password.create(password)
+        
+        if not is_password_strong?(password)
+            session[:error] = "Password too weak. Must include 1 lowercase, uppercase, number and special character and be atleast 8 long"
+            session[:filled_username] = username
+            redirect("/users/#{params[:id]}/edit")
+        end
+
+        password_digest = hash_password(password)
         update_table("users", "password_digest", password_digest, session[:user_id])
         session[:error] += (session[:error].length == 0 ? "Updated password" : " and password")
     end
@@ -533,7 +607,7 @@ post("/users") do
     result = get_fields("id", "users", "username", username)
 
     if result.empty?
-        password_digest = BCrypt::Password.create(password)
+        password_digest = hash_password(password)
         insert_into("username, password_digest, permission_level", "users", [username, password_digest, NORMAL_USER])
         session[:user_id] = get_fields("id", "users", "username", username).first["id"]
         redirect("/")
@@ -578,7 +652,7 @@ post("/add_row") do
         # Allow admin to create users
         
         if field[0] == "password_digest"
-            v = BCrypt::Password.create(v)
+            v = hash_password(v)
         end
         value += "\"" + v + "\""
         value += ","
